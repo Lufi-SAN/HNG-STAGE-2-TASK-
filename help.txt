@@ -1,0 +1,50 @@
+export type Country = {
+    name: string;
+    capital?: string;
+    region?: string;
+    population?: number;
+    flag?: string;
+    currencies?: Currency[];
+    independent?: boolean;
+};
+
+
+name always exists
+capital, region, population, currency_code, 
+exchange_rate{from 2nd API}, 
+estimated_gdp{will be zero if population & OR exchange_rate don't exist OR currencies empty} flag might NOT 
+last_refreshed_at (global timestamp?)
+
+if currencies.length = 0
+dO NOT CALL SECONd API
+currency_code = null
+exchange_rate = null
+estimated_gdp = 0
+Store country record
+
+if currency_code not in 2nd API
+exchange_rate = null
+estimated_gdp = null
+
+
+
+
+If either external API fails or times out:
+Return 503 Service Unavailable
+Response body: { "error": "External data source unavailable", "details": "Could not fetch data from [API name]" } - Only in POST
+
+:x: Error Handling
+ Return consistent JSON responses:
+404 → { "error": "Country not found" } - GET
+400 → { "error": "Validation failed" }
+500 → { "error": "Internal server error" } - From unthrown fetch(POST catch), db failures, 
+
+:white_tick: Validation Rules - Only in POST
+name, population, and currency_code are required
+Return 400 Bad Request for invalid or missing data
+ Example:
+
+  "error": "Validation failed",
+  "details": {
+    "currency_code": "is required"
+  }
