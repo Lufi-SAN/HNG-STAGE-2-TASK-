@@ -71,17 +71,6 @@ async function postRefresh() {
                             (name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url) 
                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
                             [name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url])
-                            
-                        try {
-                        const result = await database.query("SELECT name, gdp FROM countries ORDER BY gdp DESC");
-                        const countries = result.rows
-                        const total = countries.length
-                        const top5 = countries.slice(0, 5)
-                        const timestamp = countries[0]?.last_refreshed_at
-                        generateImage(total, top5, timestamp) 
-                        } catch (err) {
-                            throw new Error('500')
-                        }
                     } else {// 1b(sad path) If 2nd API does not have code
                         const exchange_rate = null
                         const estimated_gdp = null
@@ -104,6 +93,13 @@ async function postRefresh() {
                             [name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url])
             }
         }
+        
+        const result = await database.query("SELECT name, gdp FROM countries ORDER BY gdp DESC");
+        const countries = result.rows
+        const total = countries.length
+        const top5 = countries.slice(0, 5)
+        const timestamp = countries[0]?.last_refreshed_at
+        generateImage(total, top5, timestamp) 
 }} catch (err) {
     if (err instanceof Error) {
             console.log('[Query Error] In POST query function')
