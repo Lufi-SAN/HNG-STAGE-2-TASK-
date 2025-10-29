@@ -157,19 +157,22 @@ async function getCountries(param : getCountriesParam) {
         queryText += orderClause
 
         const {rows} = await database.query(queryText, values)
-        return rows 
+        return rows
     } 
 
     else if (!param.allOnly && !param.statusOnly && param.oneOnly) {//For GET countries/name
         if (param.oneCountryName) {
             const {rows} = await database.query('SELECT * FROM countries WHERE name = $1', [param.oneCountryName])
-            return rows
+            if (rows.length === 0) {
+                throw new Error('404')
+            }
+            return rows[0]
         }
     }
 
     else if (!param.allOnly && param.statusOnly && !param.oneOnly) {//For GET /status
         const {rows} = await database.query('SELECT COUNT(*) AS total_countries, MAX(last_refreshed_at) AS last_refreshed_at FROM countries')
-        return {rows}
+        return rows[0]
     }
     } catch (err) {
         if (err instanceof Error) {
@@ -184,7 +187,7 @@ async function deleteCountry(country : string) {
     await database.query('DELETE FROM countries WHERE name = $1', [country])
     } catch(err) {
         if (err instanceof Error) {
-            console.log('[Query Error] In DELETE query function')
+             console.log('[Query Error] In DELETE query function')
             throw new Error('500')
         }
     }

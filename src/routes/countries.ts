@@ -6,6 +6,7 @@ const countriesRouter = Router();
 countriesRouter.post("/refresh", async (req, res) => {
     try {
         await queries.postRefresh()
+        res.status(200).json( { "message": "Database refresh successful" } );
     }
     catch(err) {
         res.status(500).json( { "error": "Internal server error" } );
@@ -67,6 +68,11 @@ countriesRouter.get("/:name", async (req, res) => {
         }
     }
     catch (err){
+        if (err instanceof Error) { 
+            if (err.message === '404') {
+                return res.status(404).json({ "error": "Country not found" })
+            }
+        }
         return res.status(500).json({"error": "Internal server error"})   
     }
 });
@@ -75,6 +81,7 @@ countriesRouter.delete("/:name", async (req, res) => {
     try {
         if (req.params.name !== undefined) {
             await queries.deleteCountry(req.params.name)
+            return res.status(200).json({ message: `Country '${name}' deleted successfully` });
         } else {
             return res.status(400).json({ "error": "Validation failed" })
         }
