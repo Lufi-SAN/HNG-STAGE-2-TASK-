@@ -42,78 +42,65 @@ async function fetchExchangeRateObject() {
 
 async function postRefresh() {
     try {
-    
-    const arrayOfCountryObjects = await fetchCountryData();
-    if (!arrayOfCountryObjects) return;
+    //postRefresh does not return anything rn, just actions*
+    //ON post, country.currencies === SOT, so 1st API always called; 
+    // 1. If c.c[0]: call 2nd API, get 1 field & calculate gdp
+    // 2. If !c.c[0]: don't call 2nd API, make up field names for currency_code, 2nd API field & gdp
+    // 1b. If c.c[0] but 2nd API does not have code, make up field names for 2nd API field & gdp
+    const arrayOfCountryObjects = await fetchCountryData()
+    if (arrayOfCountryObjects) {
+        for(let countryObject of arrayOfCountryObjects) {
+            if (countryObject.currencies && countryObject.currencies[0]) {//1. If c.c[0]
+                //Get fields from first API
+                const { name , capital, region, population, flag } = countryObject
+                const flag_url = flag
+                const currency_code = countryObject.currencies[0].code
 
-    // Fetch the exchange rate object ONCE
-    const exchangeRateMapping = await fetchExchangeRateObject();
-    if (!exchangeRateMapping) throw new Error("Exchange rate fetch failed");
-
-    // (Optional) Clear old data if you want a fresh set every run
-    await database.query("TRUNCATE TABLE countries RESTART IDENTITY;");
-
-    // Build an array of promises for concurrent inserts
-    const insertPromises = arrayOfCountryObjects.map(async (countryObject) => {
-      const { name, capital, region, population, flag } = countryObject;
-      const flag_url = flag;
-
-      // Validation
-      if (!name || !population) {
-        console.warn(`[Validation Error] Missing name or population for ${name}`);
-        return;
-      }
-
-      // Case 1: Country has currencies
-      if (countryObject.currencies && countryObject.currencies[0]) {
-        const currency_code = countryObject.currencies[0].code;
-
-        if (exchangeRateMapping.hasOwnProperty(currency_code)) {
-          // Happy path: valid currency in 2nd API
-          const randomNumber = Math.floor(Math.random() * 1001) + 1000;
-          const exchange_rate = exchangeRateMapping[currency_code];
-          const estimated_gdp = population * randomNumber;
-
-          await database.query(
-            `INSERT INTO countries 
-              (name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url) 
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url]
-          );
-        } else {
-          // Sad path: 2nd API does not have code
-          await database.query(
-            `INSERT INTO countries 
-              (name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url) 
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [name, capital, region, population, currency_code, null, null, flag_url]
-          );
+                if (!population) {
+                    console.warn('[Validation Error] No name or population')
+                    continue;
+                }
+                //call 2nd API
+                const exchangeRateMapping = await fetchExchangeRateObject()
+                if (exchangeRateMapping) {
+                    if (exchangeRateMapping.hasOwnProperty(currency_code)) {// 1b(happy path). If 2nd API has currency_code 
+                        const randomNumber = Math.floor(Math.random() * 1001 ) + 1000
+                        const exchange_rate = exchangeRateMapping[currency_code]
+                        const estimated_gdp = (population as number * randomNumber)
+                        await database.query(`INSERT INTO countries 
+                            (name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url) 
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                            [name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url])
+                    } else {// 1b(sad path) If 2nd API does not have code
+                        const exchange_rate = null
+                        const estimated_gdp = null
+                        await database.query(`INSERT INTO countries 
+                            (name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url) 
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                            [name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url])
+                    }
+                }
+                
+            } else if (countryObject.currencies && !countryObject.currencies[0]) {// 2. If !c.c[0]
+                const { name , capital, region, population, flag } = countryObject
+                const flag_url = flag
+                const currency_code = null
+                const exchange_rate = null
+                const estimated_gdp = 0
+                await database.query(`INSERT INTO countries 
+                            (name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url) 
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                            [name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url])
+            }
         }
-      } 
-      // Case 2: Country has no currency array or empty array
-      else {
-        await database.query(
-          `INSERT INTO countries 
-            (name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [name, capital, region, population, null, null, 0, flag_url]
-        );
-      }
-    });
-
-    // Run all inserts concurrently
-    await Promise.all(insertPromises);
-
-    // Optional: generate summary image
-    const result = await database.query(
-      `SELECT name, gdp, last_refreshed_at FROM countries ORDER BY gdp DESC`
-    );
-    const countries = result.rows;
-    const total = countries.length;
-    const top5 = countries.slice(0, 5);
-    const timestamp = countries[0]?.last_refreshed_at;
-    generateImage(total, top5, timestamp);
-} catch (err) {
+        
+        const result = await database.query(`SELECT name, gdp FROM countries ORDER BY gdp DESC`);
+        const countries = result.rows
+        const total = countries.length
+        const top5 = countries.slice(0, 5)
+        const timestamp = countries[0]?.last_refreshed_at
+        generateImage(total, top5, timestamp) 
+}} catch (err) {
     if (err instanceof Error) {
             console.log('[Query Error] In POST query function')
             throw new Error('500')
