@@ -41,71 +41,69 @@ async function fetchExchangeRateObject() {
 }
 
 async function postRefresh() {
-    try {
-    //postRefresh does not return anything rn, just actions*
-    //ON post, country.currencies === SOT, so 1st API always called; 
-    // 1. If c.c[0]: call 2nd API, get 1 field & calculate gdp
-    // 2. If !c.c[0]: don't call 2nd API, make up field names for currency_code, 2nd API field & gdp
-    // 1b. If c.c[0] but 2nd API does not have code, make up field names for 2nd API field & gdp
-    const arrayOfCountryObjects = await fetchCountryData()
-    if (arrayOfCountryObjects) {
-        for(let countryObject of arrayOfCountryObjects) {
-            if (countryObject.currencies && countryObject.currencies[0]) {//1. If c.c[0]
-                //Get fields from first API
-                const { name , capital, region, population, flag } = countryObject
-                const flag_url = flag
-                const currency_code = countryObject.currencies[0].code
+  try {
+    console.log("Fetching country and exchange data...");
+    const arrayOfCountryObjects = await fetchCountryData();
+    const exchangeRateMapping = await fetchExchangeRateObject();
 
-                if (!population) {
-                    console.warn('[Validation Error] No name or population')
-                    continue;
-                }
-                //call 2nd API
-                const exchangeRateMapping = await fetchExchangeRateObject()
-                if (exchangeRateMapping) {
-                    if (exchangeRateMapping.hasOwnProperty(currency_code)) {// 1b(happy path). If 2nd API has currency_code 
-                        const randomNumber = Math.floor(Math.random() * 1001 ) + 1000
-                        const exchange_rate = exchangeRateMapping[currency_code]
-                        const estimated_gdp = (population as number * randomNumber)
-                        await database.query(`INSERT INTO countries 
-                            (name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url) 
-                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                            [name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url])
-                    } else {// 1b(sad path) If 2nd API does not have code
-                        const exchange_rate = null
-                        const estimated_gdp = null
-                        await database.query(`INSERT INTO countries 
-                            (name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url) 
-                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                            [name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url])
-                    }
-                }
-                
-            } else if (countryObject.currencies && !countryObject.currencies[0]) {// 2. If !c.c[0]
-                const { name , capital, region, population, flag } = countryObject
-                const flag_url = flag
-                const currency_code = null
-                const exchange_rate = null
-                const estimated_gdp = 0
-                await database.query(`INSERT INTO countries 
-                            (name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url) 
-                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                            [name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url])
-            }
-        }
-        
-        const result = await database.query(`SELECT name, gdp FROM countries ORDER BY gdp DESC`);
-        const countries = result.rows
-        const total = countries.length
-        const top5 = countries.slice(0, 5)
-        const timestamp = countries[0]?.last_refreshed_at
-        generateImage(total, top5, timestamp) 
-}} catch (err) {
-    if (err instanceof Error) {
-            console.log('[Query Error] In POST query function')
-            throw new Error('500')
-        }
-}
+    if (!arrayOfCountryObjects || !exchangeRateMapping) {
+      throw new Error("Failed to fetch required data");
+    }
+
+    // Optional: clear table first if you’re repopulating
+    await database.query("TRUNCATE TABLE countries RESTART IDENTITY;");
+
+    // Build an array of promises
+    const insertPromises = arrayOfCountryObjects.map((country) => {
+      const { name, capital, region, population, flag, currencies } = country;
+      const flag_url = flag;
+      const currency_code = currencies?.[0]?.code || null;
+
+      if (!name || !population) {
+        console.warn(`[Validation Error] Skipping invalid record for ${name}`);
+        return Promise.resolve(); // skip invalid rows
+      }
+
+      let exchange_rate: number | null = null;
+      let estimated_gdp: number | null = null;
+
+      if (currency_code && exchangeRateMapping.hasOwnProperty(currency_code)) {
+        const randomNumber = Math.floor(Math.random() * 1001) + 1000;
+        exchange_rate = exchangeRateMapping[currency_code]
+        estimated_gdp = population * randomNumber
+      } else {
+        exchange_rate = null;
+        estimated_gdp = 0;
+      }
+
+      return database.query(
+        `INSERT INTO countries 
+          (name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url) 
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url]
+      );
+    });
+
+    // Wait for all inserts to finish
+    await Promise.all(insertPromises);
+
+    // Generate image after DB population
+    const result = await database.query(
+      `SELECT name, estimated_gdp AS gdp, last_refreshed_at FROM countries ORDER BY gdp DESC`
+    );
+    const countries = result.rows;
+    const total = countries.length;
+    const top5 = countries.slice(0, 5);
+    const timestamp = countries[0]?.last_refreshed_at;
+
+    await generateImage(total, top5, timestamp);
+
+    console.log("Database refresh and image generation complete ✅");
+    return "done";
+  } catch (err) {
+    console.error("[postRefresh error]", err);
+    throw err; // Let the router catch it
+  }
 }
 
 type getCountriesParam = {

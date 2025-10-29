@@ -4,13 +4,13 @@ import queries from "../db/queries.js";
 const countriesRouter = Router();
 
 countriesRouter.post("/refresh", async (req, res) => {
-    try {
-        await queries.postRefresh()
-        return res.status(200).json( { "message": "Database refresh successful" } );
-    }
-    catch(err) {
-        return res.status(500).json( { "error": "Internal server error" } );
-    }
+  try {
+    await queries.postRefresh();
+    res.status(200).json({ message: "Database refresh successful" });
+  } catch (err) {
+    console.error("[POST /refresh error]", err);
+    res.status(500).json({ error: err.message || "Internal server error" });
+  }
 });
 
 countriesRouter.get("/", async (req, res) => {
