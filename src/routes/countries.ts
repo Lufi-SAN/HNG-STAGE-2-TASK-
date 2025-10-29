@@ -80,7 +80,10 @@ countriesRouter.get("/:name", async (req, res) => {
 countriesRouter.delete("/:name", async (req, res) => {
     try {
         if (req.params.name !== undefined) {
-            await queries.deleteCountry(req.params.name)
+            const result = await queries.deleteCountry(req.params.name)
+            if (result?.rowCount === 0) {
+      return res.status(404).json({ error: "Country not found" });
+    }
             return res.status(200).json({ message: `Country '${name}' deleted successfully` });
         } else {
             return res.status(400).json({ "error": "Validation failed" })
