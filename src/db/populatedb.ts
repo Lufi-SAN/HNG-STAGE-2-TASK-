@@ -3,14 +3,6 @@ dotenv.config();
 import { Client } from 'pg';
 
 const SQL = `
-CREATE TABLE IF NOT EXISTS strings (
-  id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY NOT NULL,
-  string TEXT UNIQUE,
-  palindrome BOOLEAN,
-  length INTEGER,
-  word_count INTEGER
-);
-
 CREATE TABLE IF NOT EXISTS countries (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
